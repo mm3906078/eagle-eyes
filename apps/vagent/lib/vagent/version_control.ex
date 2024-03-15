@@ -8,24 +8,24 @@ defmodule Vagent.VersionControl do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  def get_version(pid) do
-    GenServer.call(pid, :get_version)
+  def get_version() do
+    GenServer.call(__MODULE__, :get_version)
   end
 
-  def update_app(pid, app, version) do
-    GenServer.call(pid, {:update_app, app, version})
+  def update_app(app, version) do
+    GenServer.call(__MODULE__, {:update_app, app, version})
   end
 
-  def update_all_apps(pid) do
-    GenServer.call(pid, :update_all_apps)
+  def update_all_apps() do
+    GenServer.call(__MODULE__, :update_all_apps)
   end
 
-  def install_app(pid, app, version) do
-    GenServer.call(pid, {:install_app, app, version})
+  def install_app(app, version) do
+    GenServer.call(__MODULE__, {:install_app, app, version})
   end
 
-  def remove_app(pid, app) do
-    GenServer.call(pid, {:remove_app, app})
+  def remove_app(app) do
+    GenServer.call(__MODULE__, {:remove_app, app})
   end
 
   # Server
@@ -34,6 +34,8 @@ defmodule Vagent.VersionControl do
       "vagent" => "0.1.0"
     }
 
+    Logger.info("Version control initialized with apps: #{inspect(apps)}")
+
     {:ok, apps}
   end
 
@@ -41,10 +43,10 @@ defmodule Vagent.VersionControl do
     IO.puts("Removing app: #{app}")
 
     case System.cmd("apt-get", ["remove", app]) do
-      {output, 0} ->
+      {_, 0} ->
         {:reply, :ok, state}
 
-      {output, _} ->
+      {_, _} ->
         {:reply, :error, state}
     end
   end
@@ -66,16 +68,16 @@ defmodule Vagent.VersionControl do
     IO.puts("Updating all apps")
 
     case System.cmd("apt-get", ["update"]) do
-      {output, 0} ->
+      {_, 0} ->
         case System.cmd("apt-get", ["upgrade", "-y"]) do
-          {output, 0} ->
+          {_, 0} ->
             {:reply, :ok, state}
 
-          {output, _} ->
+          {_, _} ->
             {:reply, :error, state}
         end
 
-      {output, _} ->
+      {_, _} ->
         {:reply, :error, state}
     end
   end
@@ -94,12 +96,13 @@ defmodule Vagent.VersionControl do
   end
 
   def handle_call(:get_version, _from, state) do
+    Logger.info("Getting version")
     case get_apps() do
       {:ok, apps} ->
         {:reply, apps, state}
 
       {:error, reason} ->
-        IO.puts("Error: #{reason}")
+        Logger.error("Failed to get apps: #{reason}")
         {:reply, %{}, state}
     end
   end
@@ -135,19 +138,25 @@ defmodule Vagent.VersionControl do
   end
 
   defp get_apps do
-    case System.cmd("dpkg-query", ["-W", "-f='${Version}\t${Package}\n'"]) do
+    case System.cmd("dpkg-query", ["-W", "-f='${Package}: ${Version}\n'"]) do
       {output, 0} ->
         apps =
           output
-          |> String.split("'", trim: true)
-          |> Enum.map(fn line ->
-            [version, app] = String.split(line, "\t")
-            {app |> String.replace("\n", ""), version}
+          |> String.trim() # Trim leading/trailing whitespace
+          |> String.split("\n")
+          |> Enum.reduce(%{}, fn line, acc ->
+            case String.split(line, ": ", parts: 2) do
+              [app, version] when app != "" ->
+                cleaned_app = String.trim(app, "'")
+                Map.put(acc, cleaned_app, version)
+              _ ->
+                acc # Skip lines that do not match the expected format
+            end
           end)
 
         {:ok, apps}
 
-      {output, code} ->
+      {output, _} ->
         {:error, output}
     end
   end
