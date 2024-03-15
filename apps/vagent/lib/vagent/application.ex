@@ -3,7 +3,8 @@ defmodule Vagent.Application do
 
   def start(_type, _args) do
     children = [
-      Vagent.VersionControl
+      Vagent.VersionControl,
+      Vagent.NodeCtl
     ]
 
     opts = [strategy: :one_for_one, name: Vagent.Supervisor]

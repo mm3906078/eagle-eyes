@@ -25,4 +25,21 @@ defmodule VersionControl.Umbrella.MixProject do
     ]
   end
 
+  defp releases() do
+    [
+      agent: [
+        applications: [
+          vagent: :permanent
+        ],
+        steps: [:assemble, :tar]
+      ],
+      master: [
+        applications: [
+          vcentral: :permanent
+        ],
+        steps: [:assemble, :tar]
+      ]
+    ]
+  end
+
 end
