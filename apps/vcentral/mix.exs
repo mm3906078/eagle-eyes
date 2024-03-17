@@ -23,7 +23,8 @@ defmodule Vcentral.MixProject do
   defp deps do
     [
       {:jason, "~> 1.2"},
-      {:syslog, github: "schlagert/syslog"}
+      {:syslog, github: "schlagert/syslog"},
+      {:httpoison, "~> 1.8"}
     ]
   end
 end

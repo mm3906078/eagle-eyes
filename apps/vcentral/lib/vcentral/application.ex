@@ -17,5 +17,4 @@ defmodule Vcentral.Application do
       start: {:pg, :start_link, []}
     }
   end
-
 end
