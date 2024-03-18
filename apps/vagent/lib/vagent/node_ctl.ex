@@ -72,5 +72,4 @@ defmodule Vagent.NodeCtl do
     :ok = connect_to_master(state.abr_master)
     {:noreply, state}
   end
-
 end

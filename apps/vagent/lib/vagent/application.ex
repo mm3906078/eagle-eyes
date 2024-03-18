@@ -5,7 +5,7 @@ defmodule Vagent.Application do
     children = [
       pg_spec(),
       Vagent.VersionControl,
-      Vagent.NodeCtl,
+      Vagent.NodeCtl
     ]
 
     opts = [strategy: :one_for_one, name: Vagent.Supervisor]
@@ -18,5 +18,4 @@ defmodule Vagent.Application do
       start: {:pg, :start_link, []}
     }
   end
-
 end

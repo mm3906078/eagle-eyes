@@ -31,7 +31,7 @@ defmodule Vagent.VersionControl do
   # Server
   def init(_opts) do
     apps = %{
-      "vagent" => "0.1.0"
+      "vagent" => %{version: "0.1.0", cpe: "", safe_version: "0.1.0"}
     }
 
     Logger.info("Version control initialized with apps: #{inspect(apps)}")
@@ -97,23 +97,34 @@ defmodule Vagent.VersionControl do
 
   def handle_call(:get_version, _from, state) do
     Logger.info("Getting version")
+
     case get_apps() do
       {:ok, apps} ->
-        {:reply, apps, state}
+        {:reply, {:ok, apps}, state}
 
       {:error, reason} ->
         Logger.error("Failed to get apps: #{reason}")
-        {:reply, %{}, state}
+        {:reply, {:error, reason}, state}
     end
   end
 
   defp update_app_version(app, version) do
-    case System.cmd("apt-get", ["install", "#{app}=#{version}"]) do
-      {output, 0} ->
-        {:ok, output}
+    if version == "latest" do
+      case System.cmd("apt-get", ["install", app]) do
+        {output, 0} ->
+          {:ok, output}
 
-      {output, _} ->
-        {:error, output}
+        {output, _} ->
+          {:error, output}
+      end
+    else
+      case System.cmd("apt-get", ["install", "#{app}=#{version}"]) do
+        {output, 0} ->
+          {:ok, output}
+
+        {output, _} ->
+          {:error, output}
+      end
     end
   end
 
@@ -142,15 +153,26 @@ defmodule Vagent.VersionControl do
       {output, 0} ->
         apps =
           output
-          |> String.trim() # Trim leading/trailing whitespace
+          |> String.trim()
           |> String.split("\n")
           |> Enum.reduce(%{}, fn line, acc ->
             case String.split(line, ": ", parts: 2) do
               [app, version] when app != "" ->
                 cleaned_app = String.trim(app, "'")
-                Map.put(acc, cleaned_app, version)
+                #TODO: This is a hack, we should use a proper version comparison
+                version_final = Enum.at(String.split(version, "-"), 0)
+
+                app_info = %{
+                  version: version_final,
+                  cpe: "",
+                  safe_version: "",
+                  score: 0
+                }
+
+                Map.put(acc, cleaned_app, app_info)
+
               _ ->
-                acc # Skip lines that do not match the expected format
+                acc
             end
           end)
 
