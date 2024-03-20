@@ -1,7 +1,10 @@
 Enum.each(
-  [:vcentral],
+  [:vcentral, :vweb],
   fn app ->
     IO.puts("Starting app: #{app}")
-    {:ok, pid} = Application.ensure_all_started(app)
+    if app == :vweb do
+      Application.put_env(:phoenix, :serve_endpoints, true, persistent: true)
+    end
+    {:ok, _} = Application.ensure_all_started(app)
   end
 )

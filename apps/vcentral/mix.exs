@@ -25,7 +25,8 @@ defmodule Vcentral.MixProject do
       {:jason, "~> 1.2"},
       {:syslog, github: "schlagert/syslog"},
       {:user_agent_generator, "~> 1.0.1"},
-      {:httpoison, "~> 1.8"}
+      {:httpoison, "~> 1.8"},
+      {:phoenix_pubsub, "~> 2.1.3"}
     ]
   end
 end

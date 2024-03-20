@@ -155,6 +155,7 @@ defmodule Vcentral.CVEManager do
             vulnerabilities
             |> Enum.reduce(%{}, fn vulnerability, acc ->
               cve_id = vulnerability["cve"]["id"]
+              #TODO: Handle multiple CVSS metrics
               cvss_data = Enum.at(vulnerability["cve"]["metrics"]["cvssMetricV2"], 0)["cvssData"]
 
               Map.put(acc, cve_id, %{

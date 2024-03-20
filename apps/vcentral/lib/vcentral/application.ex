@@ -3,8 +3,10 @@ defmodule Vcentral.Application do
 
   def start(_type, _args) do
     children = [
+      pg_spec(),
       Vcentral.Master,
-      pg_spec()
+      # Start the PubSub system
+      {Phoenix.PubSub, name: Vcentral.PubSub}
     ]
 
     opts = [strategy: :one_for_one, name: Vcentral.Supervisor]

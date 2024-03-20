@@ -4,6 +4,7 @@ defmodule Vcentral.Master do
 
   require Logger
 
+  #TODO: Move to config
   @master :"vcentral@192.168.1.10"
   @update_interval 10 * 60 * 1000 # 10 minutes
   @cookie "cookie"
