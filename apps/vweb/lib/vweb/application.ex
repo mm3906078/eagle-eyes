@@ -1,4 +1,5 @@
 defmodule Vweb.Application do
+  require Logger
   use Application
 
   def start(_type, _args) do
@@ -20,7 +21,7 @@ defmodule Vweb.Application do
         :logger.remove_handler(:syslog)
 
       _ ->
-        Logger.warn(%{msg: "could not install syslog handler for Vweb"})
+        Logger.warning("Failed to add syslog handler")
     end
   end
 end

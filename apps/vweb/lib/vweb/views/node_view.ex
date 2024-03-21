@@ -1,6 +1,5 @@
 defmodule Vweb.NodeView do
   use Vweb, :view
-  alias Vweb.NodeView
 
   def render("list.json", %{nodes: nodes}) do
     %{data: nodes}

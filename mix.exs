@@ -13,17 +13,13 @@ defmodule VersionControl.Umbrella.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :runtime_tools],
+      extra_applications: [:logger, :runtime_tools, :httpoison],
       mod: {VersionControl.Umbrella.Application, []}
     ]
   end
 
   defp deps do
-    [
-      {:jason, "~> 1.2"},
-      {:syslog, github: "schlagert/syslog"},
-      {:httpoison, "~> 1.8"}
-    ]
+    []
   end
 
   defp releases() do
@@ -36,7 +32,8 @@ defmodule VersionControl.Umbrella.MixProject do
       ],
       master: [
         applications: [
-          vcentral: :permanent
+          vcentral: :permanent,
+          vweb: :permanent
         ],
         steps: [:assemble, :tar]
       ]

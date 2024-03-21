@@ -4,7 +4,6 @@ defmodule Vcentral.CVEManager do
   @cpe_url "https://services.nvd.nist.gov/rest/json/cpes/2.0?keywordSearch="
   @cve_url "https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName="
   @cpe_url_local "https://nvd.nist.gov/feeds/json/cpematch/1.0/nvdcpematch-1.0.json.zip"
-  @cve_url_local "https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-"
   @local_cache_path "/tmp/"
 
   def check_vulnerabilities(app, version) do

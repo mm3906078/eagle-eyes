@@ -25,3 +25,9 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :logger, level: :debug
+
+config :vagent, :master, :vcentral@localhost
+config :vcentral, :master, :vcentral@localhost
+
+config :vagent, :cookie, :cookie
+config :vcentral, :cookie, :cookie

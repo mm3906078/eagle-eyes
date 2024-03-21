@@ -2,11 +2,6 @@ defmodule Vagent.NodeCtl do
   use GenServer
   require Logger
 
-  #TODO: Move to config
-  @name :"vagent@192.168.1.10"
-  @master :"vcentral@192.168.1.10"
-  @cookie "cookie"
-
   # Client
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -19,11 +14,13 @@ defmodule Vagent.NodeCtl do
   # Server
   @impl true
   def init(_opts) do
-    Node.start(@name)
-    # Node.set_cookie(Node.self(), @cookie)
-    case connect_to_master(@master) do
+    master = Application.get_env(:vagent, :master)
+    cookie = Application.get_env(:vagent, :cookie)
+    Node.start(master)
+    Node.set_cookie(Node.self(), cookie)
+    case connect_to_master(master) do
       :ok ->
-        {:ok, @master}
+        {:ok, master}
 
       :error ->
         {:stop, :error}
@@ -41,7 +38,6 @@ defmodule Vagent.NodeCtl do
     {:noreply, state}
   end
 
-  @impl true
   defp connect_to_master(_master_node, retry \\ 5, delay \\ 5_000)
 
   defp connect_to_master(master_node, 0, _retry_delay) do
@@ -74,8 +70,9 @@ defmodule Vagent.NodeCtl do
 
   @impl true
   def handle_info({:nodedown, node, %{nodedown_reason: reason}}, state) do
+    master = Application.get_env(:vagent, :master)
     Logger.error(%{msg: "disconnected from master", node: node, reason: reason})
-    :ok = connect_to_master(@master)
+    :ok = connect_to_master(master)
     {:noreply, state}
   end
 end

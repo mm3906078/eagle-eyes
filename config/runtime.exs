@@ -1,12 +1,23 @@
 import Config
 
 if config_env() == :prod do
-  http_listen_addr =
-    System.get_env("HTTP_LISTEN_ADDR") ||
+  master =
+    System.get_env("MASTER") ||
       raise """
-      RESTful API listen address.
-      environment variable HTTP_LISTEN_ADDR is missing.
-      For example: 127.0.0.1
+      MASTER environment variable is not set.
+      For example: master@172.55.12.1
       """
-  {:ok, http_listen_ip} = :inet.parse_ipv4strict_address(String.to_charlist(http_listen_addr))
-  end
+
+  config :vagent, :master, String.to_atom(master)
+  config :vcentral, :master, String.to_atom(master)
+
+  cookie =
+    System.get_env("COOKIE") ||
+      raise """
+      COOKIE environment variable is not set.
+      For example: secret
+      """
+
+  config :vcentral, :cookie, String.to_atom(cookie)
+  config :vagent, :cookie, String.to_atom(cookie)
+end

@@ -4,10 +4,7 @@ defmodule Vcentral.Master do
 
   require Logger
 
-  #TODO: Move to config
-  @master :"vcentral@192.168.1.10"
   @update_interval 10 * 60 * 1000 # 10 minutes
-  @cookie "cookie"
 
   # Client
   def start_link(opts) do
@@ -39,8 +36,10 @@ defmodule Vcentral.Master do
 
   @impl true
   def handle_continue(:initialize, state) do
-    Node.start(@master)
-    # Node.set_cookie(Node.self(), @cookie)
+    master = Application.get_env(:vcentral, :master)
+    cookie = Application.get_env(:vcentral, :cookie)
+    Node.start(master)
+    Node.set_cookie(Node.self(), cookie)
     :net_kernel.monitor_nodes(true)
     nodes = Node.list()
     Logger.info("Master initialized with nodes: #{inspect(nodes)}")

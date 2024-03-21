@@ -1,5 +1,5 @@
 defmodule Vweb.ApiSpec do
-  alias OpenApiSpex.{Components, Info, OpenApi, Paths, Server}
+  alias OpenApiSpex.{Info, OpenApi, Paths, Server}
   alias Vweb.{Router, Endpoint}
   @behaviour OpenApi
 
