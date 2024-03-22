@@ -26,8 +26,9 @@ config :phoenix, :plug_init_mode, :runtime
 
 config :logger, level: :debug
 
-config :vagent, :master, :vcentral@localhost
-config :vcentral, :master, :vcentral@localhost
+config :vagent, :master, :"vcentral@192.168.1.10"
+config :vcentral, :master, :"vcentral@192.168.1.10"
+config :vagent, :agent, :"vagent@192.168.1.10"
 
 config :vagent, :cookie, :cookie
 config :vcentral, :cookie, :cookie

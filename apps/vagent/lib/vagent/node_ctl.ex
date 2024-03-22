@@ -16,7 +16,8 @@ defmodule Vagent.NodeCtl do
   def init(_opts) do
     master = Application.get_env(:vagent, :master)
     cookie = Application.get_env(:vagent, :cookie)
-    Node.start(master)
+    agent = Application.get_env(:vagent, :agent)
+    Node.start(agent, :shortnames)
     Node.set_cookie(Node.self(), cookie)
     case connect_to_master(master) do
       :ok ->

@@ -20,4 +20,12 @@ if config_env() == :prod do
 
   config :vcentral, :cookie, String.to_atom(cookie)
   config :vagent, :cookie, String.to_atom(cookie)
+
+  agent =
+    System.get_env("AGENT") ||
+      raise """
+      AGENT environment variable is not set.
+      For example: agent@172.55.12.1
+      """
+  config :vagent, :agent, String.to_atom(agent)
 end
