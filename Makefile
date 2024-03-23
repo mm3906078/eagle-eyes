@@ -31,3 +31,4 @@ clean:
 	mix clean
 	rm -rf _build
 	rm -rf deps
+	rm -rf .elixir_ls

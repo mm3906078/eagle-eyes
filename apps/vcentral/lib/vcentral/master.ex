@@ -36,10 +36,6 @@ defmodule Vcentral.Master do
 
   @impl true
   def handle_continue(:initialize, state) do
-    master = Application.get_env(:vcentral, :master)
-    cookie = Application.get_env(:vcentral, :cookie)
-    Node.start(master)
-    Node.set_cookie(Node.self(), cookie)
     :net_kernel.monitor_nodes(true)
     nodes = Node.list()
     Logger.info("Master initialized with nodes: #{inspect(nodes)}")
@@ -121,7 +117,7 @@ defmodule Vcentral.Master do
         app_info
 
       {:error, reason} ->
-        Logger.warn("Failed to get CPE for #{app_name}: #{inspect(reason)}")
+        Logger.warning("Failed to get CPE for #{app_name}: #{inspect(reason)}")
         app_info
     end
   end

@@ -17,6 +17,8 @@ config :vweb, Vweb.Endpoint,
   watchers: [],
   secret_key_base: "w7S7NjZZQhGXO/kyx++RDwbvKhIICUmgu85vHFpcW5JdE+yP51qZ5sYqmhn0fJ4R"
 
+config :vweb, Vweb.Endpoint, server: true
+
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.
 config :phoenix, :stacktrace_depth, 20
@@ -28,7 +30,3 @@ config :logger, level: :debug
 
 config :vagent, :master, :"vcentral@192.168.1.10"
 config :vcentral, :master, :"vcentral@192.168.1.10"
-config :vagent, :agent, :"vagent@192.168.1.10"
-
-config :vagent, :cookie, :cookie
-config :vcentral, :cookie, :cookie

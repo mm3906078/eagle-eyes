@@ -14,11 +14,9 @@ defmodule Vagent.NodeCtl do
   # Server
   @impl true
   def init(_opts) do
+    Process.flag(:trap_exit, true)
+    :net_kernel.monitor_nodes(true, %{nodedown_reason: true})
     master = Application.get_env(:vagent, :master)
-    cookie = Application.get_env(:vagent, :cookie)
-    agent = Application.get_env(:vagent, :agent)
-    Node.start(agent, :shortnames)
-    Node.set_cookie(Node.self(), cookie)
     case connect_to_master(master) do
       :ok ->
         {:ok, master}
