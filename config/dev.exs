@@ -30,3 +30,5 @@ config :logger, level: :debug
 
 config :vagent, :master, :"vcentral@192.168.1.10"
 config :vcentral, :master, :"vcentral@192.168.1.10"
+
+config :vagent, :demo, true

@@ -35,6 +35,7 @@ if config_env() == :prod do
       COOKIE environment variable is not set.
       For example: cookie
       """
+
   config :vagent, :cookie, String.to_atom(cookie)
   config :vcentral, :cookie, String.to_atom(cookie)
 

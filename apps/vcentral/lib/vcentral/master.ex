@@ -4,7 +4,8 @@ defmodule Vcentral.Master do
 
   require Logger
 
-  @update_interval 10 * 60 * 1000 # 10 minutes
+  # 10 minutes
+  @update_interval 10 * 60 * 1000
 
   # Client
   def start_link(opts) do
@@ -24,6 +25,10 @@ defmodule Vcentral.Master do
     GenServer.call(__MODULE__, {:check_node, node}, 1_000_000)
   end
 
+  def check_node_async(node) do
+    GenServer.cast(__MODULE__, {:check_node_async, node})
+  end
+
   def update_app(app, version, node) do
     GenServer.call({Vagent.VersionControl, node}, {:update_app, app, version})
   end
@@ -32,6 +37,26 @@ defmodule Vcentral.Master do
   @impl true
   def init(_opts) do
     {:ok, %{nodes: %{}}, {:continue, :initialize}}
+  end
+
+  @impl true
+  def handle_call({:check_node_async, node}, _from, state) do
+    Task.start(fn -> check_node_func(node, state, "async") end)
+    {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call(:get_state, _from, state) do
+    {:reply, state, state}
+  end
+
+  @impl true
+  def handle_call({:check_node, node}, _from, state) do
+    {:ok, updated_apps} = check_node_func(node, state, "sync")
+    new_nodes = Map.put(state[:nodes], String.to_atom(node), updated_apps)
+    new_state = Map.put(state, :nodes, new_nodes)
+
+    {:reply, new_state, new_state}
   end
 
   @impl true
@@ -87,8 +112,7 @@ defmodule Vcentral.Master do
     {:noreply, new_state}
   end
 
-  @impl true
-  def handle_call({:check_node, node}, _from, state) do
+  defp check_node_func(node, state, status) do
     apps = Map.get(state[:nodes], String.to_atom(node), %{})
 
     updated_apps =
@@ -98,10 +122,12 @@ defmodule Vcentral.Master do
         Map.put(acc, app_name, updated_app_info)
       end)
 
-    new_nodes = Map.put(state[:nodes], String.to_atom(node), updated_apps)
-    new_state = Map.put(state, :nodes, new_nodes)
+    if status == "async" do
+      # TODO: find the apps have CVEs and make a message
+      Logger.info("Node: #{node} updated apps: #{inspect(updated_apps)}")
+    end
 
-    {:reply, new_state, new_state}
+    {:ok, updated_apps}
   end
 
   defp update_app_info(app_name, app_info) do
@@ -119,26 +145,28 @@ defmodule Vcentral.Master do
       {:error, reason} ->
         Logger.warning("Failed to get CPE for #{app_name}: #{inspect(reason)}")
         app_info
+
+      :error ->
+        Logger.warning("Failed to get CPEs for #{app_name}")
+        app_info
     end
   end
 
   defp handle_cpe_and_cves(app_name, cpe, app_info) do
     case CVEManager.get_CVEs(cpe) do
       {:ok, res} ->
+        #TODO: Multiple CVEs should be handled
         Logger.debug("Got CVEs for #{app_name} with CPE #{cpe}: #{inspect(res)}")
         safe_version = Map.get(res, :last_version, app_info[:version])
+        score = Map.get(res, :baseScore, 0)
 
         Map.put(app_info, :safe_version, safe_version)
+        |> Map.put(:score, score)
         |> Map.put(:cpe, cpe)
 
       {:error, reason} ->
         Logger.debug("Failed to get CVEs for #{app_name} with CPE #{cpe}: #{inspect(reason)}")
         Map.put(app_info, :cpe, cpe)
     end
-  end
-
-  @impl true
-  def handle_call(:get_state, _from, state) do
-    {:reply, state, state}
   end
 end

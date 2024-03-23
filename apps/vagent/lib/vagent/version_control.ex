@@ -98,13 +98,30 @@ defmodule Vagent.VersionControl do
   def handle_call(:get_version, _from, state) do
     Logger.info("Getting version")
 
-    case get_apps() do
-      {:ok, apps} ->
-        {:reply, {:ok, apps}, state}
+    case Application.get_env(:vagent, :demo) do
+      true ->
+        status = :demo
 
-      {:error, reason} ->
-        Logger.error("Failed to get apps: #{reason}")
-        {:reply, {:error, reason}, state}
+        case get_apps(status) do
+          {:ok, apps} ->
+            {:reply, {:ok, apps}, state}
+
+          {:error, reason} ->
+            Logger.error("Failed to get apps: #{reason}")
+            {:reply, {:error, reason}, state}
+        end
+
+      _ ->
+        status = :all
+
+        case get_apps(status) do
+          {:ok, apps} ->
+            {:reply, {:ok, apps}, state}
+
+          {:error, reason} ->
+            Logger.error("Failed to get apps: #{reason}")
+            {:reply, {:error, reason}, state}
+        end
     end
   end
 
@@ -148,38 +165,64 @@ defmodule Vagent.VersionControl do
     end
   end
 
-  defp get_apps do
-    case System.cmd("dpkg-query", ["-W", "-f='${Package}: ${Version}\n'"]) do
-      {output, 0} ->
-        apps =
-          output
-          |> String.trim()
-          |> String.split("\n")
-          |> Enum.reduce(%{}, fn line, acc ->
-            case String.split(line, ": ", parts: 2) do
-              [app, version] when app != "" ->
-                cleaned_app = String.trim(app, "'")
-                #TODO: This is a hack, we should use a proper version comparison
-                version_final = Enum.at(String.split(version, "-"), 0)
+  defp get_apps(status) do
+    case status do
+      :all ->
+        case System.cmd("dpkg-query", ["-W", "-f='${Package}: ${Version}\n'"]) do
+          {output, 0} ->
+            apps =
+              output
+              |> String.trim()
+              |> String.split("\n")
+              |> Enum.reduce(%{}, fn line, acc ->
+                case String.split(line, ": ", parts: 2) do
+                  [app, version] when app != "" ->
+                    cleaned_app = String.trim(app, "'")
+                    # TODO: This is a hack, we should use a proper version comparison
+                    version_final = Enum.at(String.split(version, "-"), 0)
 
-                app_info = %{
-                  version: version_final,
-                  cpe: "",
-                  safe_version: "",
-                  score: 0
-                }
+                    app_info = %{
+                      version: version_final,
+                      cpe: "",
+                      safe_version: "",
+                      score: 0
+                    }
 
-                Map.put(acc, cleaned_app, app_info)
+                    Map.put(acc, cleaned_app, app_info)
 
-              _ ->
-                acc
-            end
-          end)
+                  _ ->
+                    acc
+                end
+              end)
 
-        {:ok, apps}
+            {:ok, apps}
 
-      {output, _} ->
-        {:error, output}
+          {output, _} ->
+            {:error, output}
+        end
+
+      :demo ->
+        {output, 0} =
+          System.cmd("sh", [
+            "-c",
+            "dpkg-query -W -f='${Package}: ${Version}\n' | grep 'vlc: 3.0.16-1build7'"
+          ])
+
+        [app, version] = String.split(output, ": ", parts: 2)
+        version_final = Enum.at(String.split(version, "-"), 0)
+
+        app_info = %{
+          version: version_final,
+          cpe: "",
+          safe_version: "",
+          score: 0
+        }
+
+        {:ok, %{app => app_info}}
+
+      :shallow ->
+        # TODO: Implement for smaller list of apps
+        {:error, "Not implemented"}
     end
   end
 end

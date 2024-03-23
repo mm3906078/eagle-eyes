@@ -17,6 +17,7 @@ defmodule Vagent.NodeCtl do
     Process.flag(:trap_exit, true)
     :net_kernel.monitor_nodes(true, %{nodedown_reason: true})
     master = Application.get_env(:vagent, :master)
+
     case connect_to_master(master) do
       :ok ->
         {:ok, master}
@@ -32,8 +33,16 @@ defmodule Vagent.NodeCtl do
   end
 
   @impl true
-  def handle_info({:nodeup, node}, state) do
+  def handle_info({:nodeup, node, _metadata}, state) do
     Logger.info("Node up: #{inspect(node)}")
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:nodedown, node, %{nodedown_reason: reason}}, state) do
+    master = Application.get_env(:vagent, :master)
+    Logger.error(%{msg: "disconnected from master", node: node, reason: reason})
+    :ok = connect_to_master(master)
     {:noreply, state}
   end
 
@@ -65,13 +74,5 @@ defmodule Vagent.NodeCtl do
     :pg.leave(:nodes, self())
     Logger.info("NodeCtl terminated")
     :ok
-  end
-
-  @impl true
-  def handle_info({:nodedown, node, %{nodedown_reason: reason}}, state) do
-    master = Application.get_env(:vagent, :master)
-    Logger.error(%{msg: "disconnected from master", node: node, reason: reason})
-    :ok = connect_to_master(master)
-    {:noreply, state}
   end
 end

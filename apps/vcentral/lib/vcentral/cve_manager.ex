@@ -66,7 +66,7 @@ defmodule Vcentral.CVEManager do
   def get_CPEs_local(app, version) do
     case download_CPEs() do
       :ok ->
-        case File.read(Path.join(@local_cache_path, "cpe.json")) do
+        case File.read(Path.join(@local_cache_path, "nvdcpematch-1.0.json")) do
           {:ok, body} ->
             case Jason.decode(body) do
               {:ok, %{"matches" => matches}} ->
@@ -88,8 +88,8 @@ defmodule Vcentral.CVEManager do
             {:error, error}
         end
 
-      {:error, _} = error ->
-        {:error, error}
+      :error ->
+        :error
     end
   end
 
@@ -104,7 +104,8 @@ defmodule Vcentral.CVEManager do
   end
 
   defp download_CPEs() do
-    path = Path.join(@local_cache_path, "cpe.json")
+    path = Path.join(@local_cache_path, "nvdcpematch-1.0.json")
+    zip_path = Path.join(@local_cache_path, "cpe.zip")
     user_agent = UserAgent.random()
 
     case File.exists?(path) do
@@ -117,8 +118,9 @@ defmodule Vcentral.CVEManager do
 
         case HTTPoison.get(@cpe_url_local, [{"User-Agent", user_agent}]) do
           {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
-            decompressed_body = :zlib.gunzip(body)
-            File.write!(path, decompressed_body)
+            File.write!(zip_path, body)
+            {_result, 0} = System.cmd("unzip", [zip_path, "-d", @local_cache_path])
+            File.rm(zip_path)
             :ok
 
           {:ok, %HTTPoison.Response{status_code: status_code}} ->
@@ -130,8 +132,9 @@ defmodule Vcentral.CVEManager do
             :error
 
           {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
-            decompressed_body = :zlib.gunzip(body)
-            File.write!(path, decompressed_body)
+            File.write!(zip_path, body)
+            {_result, 0} = System.cmd("unzip", [zip_path, "-d", @local_cache_path])
+            File.rm(zip_path)
             :ok
 
           {:ok, %HTTPoison.Response{status_code: status_code}} ->
@@ -154,10 +157,18 @@ defmodule Vcentral.CVEManager do
             vulnerabilities
             |> Enum.reduce(%{}, fn vulnerability, acc ->
               cve_id = vulnerability["cve"]["id"]
-              #TODO: Handle multiple CVSS metrics
-              cvss_data = Enum.at(vulnerability["cve"]["metrics"]["cvssMetricV2"], 0)["cvssData"]
+
+              cvss_data =
+                case vulnerability["cve"]["metrics"]["cvssMetricV2"] do
+                  nil ->
+                    Enum.at(vulnerability["cve"]["metrics"]["cvssMetricV31"], 0)["cvssData"]
+
+                  cvssMetricV2 ->
+                    Enum.at(cvssMetricV2, 0)["cvssData"]
+                end
 
               Map.put(acc, cve_id, %{
+                #TODO: last version is false, we should read it in the description
                 lastVersion: cvss_data["version"],
                 baseScore: cvss_data["baseScore"],
                 description: Enum.at(vulnerability["cve"]["descriptions"], 0)["value"]

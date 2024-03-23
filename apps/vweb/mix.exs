@@ -35,7 +35,7 @@ defmodule Vweb.MixProject do
       {:phoenix_view, "~> 2.0.3"},
       {:phoenix_html_helpers, "~> 1.0"},
       {:bandit, "~> 1.0"},
-      {:cors_plug, "~> 3.0"},
+      {:cors_plug, "~> 3.0"}
     ]
   end
 end

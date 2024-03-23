@@ -34,5 +34,4 @@ defmodule Vweb.NodeController do
     state = Master.get_master_state()
     render(conn, "state.json", %{state: state})
   end
-
 end
