@@ -168,7 +168,7 @@ defmodule Vcentral.CVEManager do
                 end
 
               Map.put(acc, cve_id, %{
-                #TODO: last version is false, we should read it in the description
+                # TODO: last version is false, we should read it in the description
                 lastVersion: cvss_data["version"],
                 baseScore: cvss_data["baseScore"],
                 description: Enum.at(vulnerability["cve"]["descriptions"], 0)["value"]

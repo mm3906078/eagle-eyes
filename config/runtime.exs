@@ -56,4 +56,22 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :vweb, Vweb.Endpoint, server: true
+
+  telegram_bot_token =
+    System.get_env("TELEGRAM_BOT_TOKEN") ||
+      raise """
+      TELEGRAM_BOT_TOKEN environment variable is not set.
+      For example: 1234567890:ABCDEF1234567890
+      """
+
+  config :vcentral, :telegram_bot_token, telegram_bot_token
+
+  telegram_chat_id =
+    System.get_env("TELEGRAM_CHAT_ID") ||
+      raise """
+      TELEGRAM_CHAT_ID environment variable is not set.
+      For example: 1234567890
+      """
+
+  config :vcentral, :telegram_chat_id, telegram_chat_id
 end

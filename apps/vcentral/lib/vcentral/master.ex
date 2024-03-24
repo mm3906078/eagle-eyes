@@ -22,7 +22,7 @@ defmodule Vcentral.Master do
   end
 
   def check_node(node) do
-    GenServer.call(__MODULE__, {:check_node, node}, 1_000_000)
+    GenServer.call(__MODULE__, {:check_node, node}, 10_000)
   end
 
   def check_node_async(node) do
@@ -36,7 +36,23 @@ defmodule Vcentral.Master do
   # Server
   @impl true
   def init(_opts) do
-    {:ok, %{nodes: %{}}, {:continue, :initialize}}
+    # State structure:
+    # %{
+    #   nodes: %{"agent@ip" => %{"vlc" => %{version: "0.1.0", cpe: "cpe:2.3:a:videolan:vlc_media_player:3.0.16:*:*:*:*:*:*:*"}}},
+    #   cves: %{
+    #     "agent@ip" => %{
+    #       "vlc" => %{
+    #         "CVE-2022-41325" => %{
+    #           description:
+    #             "An integer overflow in the VNC module in VideoLAN VLC Media Player through 3.0.17.4 allows attackers, by tricking a user into opening a crafted playlist or connecting to a rogue VNC server, to crash VLC or execute code under some conditions.",
+    #           baseScore: 7.8,
+    #           lastVersion: "3.1"
+    #         }
+    #       }
+    #     }
+    #   }
+    # }
+    {:ok, %{nodes: %{}, cves: %{}}, {:continue, :initialize}}
   end
 
   @impl true
@@ -52,9 +68,13 @@ defmodule Vcentral.Master do
 
   @impl true
   def handle_call({:check_node, node}, _from, state) do
-    {:ok, updated_apps} = check_node_func(node, state, "sync")
-    new_nodes = Map.put(state[:nodes], String.to_atom(node), updated_apps)
-    new_state = Map.put(state, :nodes, new_nodes)
+    {:ok, updated_apps, cves} = check_node_func(node, state, "sync")
+
+    new_state_app =
+      Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node, updated_apps) end)
+
+    new_state =
+      Map.update(new_state_app, :cves, %{}, fn cves_map -> Map.put(cves_map, node, cves) end)
 
     {:reply, new_state, new_state}
   end
@@ -76,9 +96,14 @@ defmodule Vcentral.Master do
       Enum.reduce(nodes, state, fn node, acc_state ->
         Logger.info("Checking node: #{inspect(node)}")
 
+        node_string = Atom.to_string(node)
+
         case GenServer.call({Vagent.VersionControl, node}, :get_version) do
           {:ok, version} ->
-            Map.update(acc_state, :nodes, 0, fn nodes -> Map.put(nodes, node, version) end)
+            Map.update(acc_state, :nodes, 0, fn nodes -> Map.put(nodes, node_string, version) end)
+
+          # this line commented out to make debugging easier
+          # Map.update(acc_state, :cves, 0, fn cves -> Map.put(cves, node_string, %{}) end)
 
           {:error, _} ->
             Logger.error("Failed to get version from node: #{inspect(node)}")
@@ -94,10 +119,17 @@ defmodule Vcentral.Master do
   def handle_info({:nodeup, node}, state) do
     Logger.info("Node up: #{inspect(node)}")
 
+    node_string = Atom.to_string(node)
+
     case GenServer.call({Vagent.VersionControl, node}, :get_version) do
       {:ok, apps} ->
-        new_state = Map.update(state, :nodes, 0, fn nodes -> Map.put(nodes, node, apps) end)
-        {:noreply, new_state}
+        new_state_app =
+          Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node_string, apps) end)
+
+        new_state_app_cve =
+          Map.update(new_state_app, :cves, %{}, fn cves -> Map.put(cves, node_string, %{}) end)
+
+        {:noreply, new_state_app_cve}
 
       {:error, _} ->
         Logger.error("Failed to get version from node: #{inspect(node)}")
@@ -108,26 +140,41 @@ defmodule Vcentral.Master do
   @impl true
   def handle_info({:nodedown, node}, state) do
     Logger.info("Node down: #{inspect(node)}")
-    new_state = Map.update(state, :nodes, 0, fn nodes -> Map.delete(nodes, node) end)
+    new_state_app = Map.update(state, :nodes, 0, fn nodes -> Map.delete(nodes, node) end)
+    new_state = Map.update(new_state_app, :cves, 0, fn cves -> Map.delete(cves, node) end)
     {:noreply, new_state}
   end
 
   defp check_node_func(node, state, status) do
-    apps = Map.get(state[:nodes], String.to_atom(node), %{})
+    apps = Map.get(state[:nodes], node, %{})
 
-    updated_apps =
-      Enum.reduce(apps, %{}, fn {app_name, app_info}, acc ->
+    {updated_apps, cves_node} =
+      Enum.reduce(apps, {%{}, %{}}, fn {app_name, app_info}, {acc_apps, acc_cves} ->
         Logger.debug("Checking app: #{app_name} with version: #{app_info[:version]}")
-        updated_app_info = update_app_info(app_name, app_info)
-        Map.put(acc, app_name, updated_app_info)
+
+        case update_app_info(app_name, app_info) do
+          {updated_app_info, cves_app} ->
+            {Map.put(acc_apps, app_name, updated_app_info), Map.put(acc_cves, app_name, cves_app)}
+
+          updated_app_info ->
+            {Map.put(acc_apps, app_name, updated_app_info), acc_cves}
+        end
       end)
 
     if status == "async" do
-      # TODO: find the apps have CVEs and make a message
-      Logger.info("Node: #{node} updated apps: #{inspect(updated_apps)}")
+      {:ok, message} = Vcentral.Notifier.create_message(node, cves_node)
+
+      case Vcentral.Notifier.send_message_telegram(message) do
+        {:ok, _} -> Logger.info("Message sent to telegram")
+        {:error, reason} -> Logger.error("Failed to send message to telegram: #{inspect(reason)}")
+      end
     end
 
-    {:ok, updated_apps}
+    Logger.debug(
+      "Node: #{node} updated apps: #{inspect(updated_apps)} with CVEs: #{inspect(cves_node)}"
+    )
+
+    {:ok, updated_apps, cves_node}
   end
 
   defp update_app_info(app_name, app_info) do
@@ -135,7 +182,15 @@ defmodule Vcentral.Master do
       {:ok, cpe_list} when is_list(cpe_list) and cpe_list != [] ->
         Enum.reduce(cpe_list, app_info, fn cpe, acc_info ->
           Logger.debug("Got CPE for #{app_name}: #{cpe}")
-          handle_cpe_and_cves(app_name, cpe, acc_info)
+
+          case handle_cpe_and_cves(app_name, cpe, acc_info) do
+            {:ok, cves_app, updated_app_info} ->
+              Logger.debug("acc_info: #{inspect(acc_info)}")
+              {updated_app_info, cves_app}
+
+            _ ->
+              acc_info
+          end
         end)
 
       {:ok, _} ->
@@ -155,14 +210,9 @@ defmodule Vcentral.Master do
   defp handle_cpe_and_cves(app_name, cpe, app_info) do
     case CVEManager.get_CVEs(cpe) do
       {:ok, res} ->
-        #TODO: Multiple CVEs should be handled
         Logger.debug("Got CVEs for #{app_name} with CPE #{cpe}: #{inspect(res)}")
-        safe_version = Map.get(res, :last_version, app_info[:version])
-        score = Map.get(res, :baseScore, 0)
-
-        Map.put(app_info, :safe_version, safe_version)
-        |> Map.put(:score, score)
-        |> Map.put(:cpe, cpe)
+        updated_app_info = Map.put(app_info, :cpe, cpe)
+        {:ok, res, updated_app_info}
 
       {:error, reason} ->
         Logger.debug("Failed to get CVEs for #{app_name} with CPE #{cpe}: #{inspect(reason)}")

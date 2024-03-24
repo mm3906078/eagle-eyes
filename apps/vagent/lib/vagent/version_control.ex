@@ -213,9 +213,7 @@ defmodule Vagent.VersionControl do
 
         app_info = %{
           version: version_final,
-          cpe: "",
-          safe_version: "",
-          score: 0
+          cpe: ""
         }
 
         {:ok, %{app => app_info}}

@@ -32,3 +32,6 @@ config :vagent, :master, :"vcentral@192.168.1.10"
 config :vcentral, :master, :"vcentral@192.168.1.10"
 
 config :vagent, :demo, true
+
+config :vcentral, :telegram_bot_token, System.get_env("TELEGRAM_BOT_TOKEN")
+config :vcentral, :telegram_chat_id, System.get_env("TELEGRAM_CHAT_ID")
