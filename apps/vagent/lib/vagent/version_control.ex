@@ -127,7 +127,7 @@ defmodule Vagent.VersionControl do
 
   defp update_app_version(app, version) do
     if version == "latest" do
-      case System.cmd("apt-get", ["install", app]) do
+      case System.cmd("apt-get", ["install", app, "-y"]) do
         {output, 0} ->
           {:ok, output}
 
@@ -135,7 +135,7 @@ defmodule Vagent.VersionControl do
           {:error, output}
       end
     else
-      case System.cmd("apt-get", ["install", "#{app}=#{version}"]) do
+      case System.cmd("apt-get", ["install", "#{app}=#{version}", "-y"]) do
         {output, 0} ->
           {:ok, output}
 
@@ -147,7 +147,7 @@ defmodule Vagent.VersionControl do
 
   defp install_app_version(app, version) do
     if version == "latest" do
-      case System.cmd("apt-get", ["install", app]) do
+      case System.cmd("apt-get", ["install", app, "-y"]) do
         {output, 0} ->
           {:ok, output}
 
@@ -155,7 +155,7 @@ defmodule Vagent.VersionControl do
           {:error, output}
       end
     else
-      case System.cmd("apt-get", ["install", "#{app}=#{version}"]) do
+      case System.cmd("apt-get", ["install", "#{app}=#{version}", "-y"]) do
         {output, 0} ->
           {:ok, output}
 
@@ -183,9 +183,7 @@ defmodule Vagent.VersionControl do
 
                     app_info = %{
                       version: version_final,
-                      cpe: "",
-                      safe_version: "",
-                      score: 0
+                      cpe: ""
                     }
 
                     Map.put(acc, cleaned_app, app_info)
@@ -205,18 +203,33 @@ defmodule Vagent.VersionControl do
         {output, 0} =
           System.cmd("sh", [
             "-c",
-            "dpkg-query -W -f='${Package}: ${Version}\n' | grep 'vlc: 3.0.16-1build7'"
+            "dpkg-query -W -f='${Package}: ${Version}\n' | grep -E 'vlc: 3.0.16-1build7|time: 1.9-0.1build2'"
           ])
 
-        [app, version] = String.split(output, ": ", parts: 2)
-        version_final = Enum.at(String.split(version, "-"), 0)
+        apps =
+          output
+          |> String.trim()
+          |> String.split("\n")
+          |> Enum.reduce(%{}, fn line, acc ->
+            case String.split(line, ": ", parts: 2) do
+              [app, version] when app != "" ->
+                cleaned_app = String.trim(app, "'")
+                # TODO: This is a hack, we should use a proper version comparison
+                version_final = Enum.at(String.split(version, "-"), 0)
 
-        app_info = %{
-          version: version_final,
-          cpe: ""
-        }
+                app_info = %{
+                  version: version_final,
+                  cpe: ""
+                }
 
-        {:ok, %{app => app_info}}
+                Map.put(acc, cleaned_app, app_info)
+
+              _ ->
+                acc
+            end
+          end)
+
+        {:ok, apps}
 
       :shallow ->
         # TODO: Implement for smaller list of apps

@@ -34,4 +34,160 @@ defmodule Vweb.NodeController do
     state = Master.get_master_state()
     render(conn, "state.json", %{state: state})
   end
+
+  operation(:update_app_version,
+    summary: "Update app with the specified version",
+    parameters: [
+      node: [
+        in: :query,
+        description: "Node name",
+        required: true,
+        type: :string,
+        example: "node1@192.168.1.10"
+      ],
+      app: [
+        in: :query,
+        description: "App name",
+        required: true,
+        type: :string,
+        example: "vagent"
+      ],
+      version: [
+        in: :query,
+        description: "App version",
+        required: false,
+        type: :string,
+        example: "0.1.0"
+      ]
+    ]
+  )
+
+  def update_app_version(conn, params) do
+    node = String.to_atom(Map.get(params, "node"))
+    app = Map.get(params, "app")
+    version = Map.get(params, "version", "latest")
+
+    case Master.update_app(app, version, node) do
+      {:ok, _} ->
+        conn
+        |> put_status(:ok)
+        |> json(%{message: "App version updated"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{message: "Failed to update app version", reason: reason})
+    end
+  end
+
+  operation(:install_app,
+    summary: "Install app with the specified version",
+    parameters: [
+      node: [
+        in: :query,
+        description: "Node name",
+        required: true,
+        type: :string,
+        example: "node1@192.168.1.10"
+      ],
+      app: [
+        in: :query,
+        description: "App name",
+        required: true,
+        type: :string,
+        example: "vagent"
+      ],
+      version: [
+        in: :query,
+        description: "App version",
+        required: false,
+        type: :string,
+        example: "0.1.0"
+      ]
+    ]
+  )
+
+  def install_app(conn, params) do
+    node = String.to_atom(Map.get(params, "node"))
+    app = Map.get(params, "app")
+    version = Map.get(params, "version", "latest")
+
+    case Master.install_app(app, version, node) do
+      {:ok, _} ->
+        conn
+        |> put_status(:ok)
+        |> json(%{message: "App installed"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{message: "Failed to install app", reason: reason})
+    end
+  end
+
+  operation(:remove_app,
+    summary: "Remove app",
+    parameters: [
+      node: [
+        in: :query,
+        description: "Node name",
+        required: true,
+        type: :string,
+        example: "node1@192.168.1.10"
+      ],
+      app: [
+        in: :query,
+        description: "App name",
+        required: true,
+        type: :string,
+        example: "vagent"
+      ]
+    ]
+  )
+
+  def remove_app(conn, params) do
+    node = String.to_atom(Map.get(params, "node"))
+    app = Map.get(params, "app")
+
+    case Master.remove_app(app, node) do
+      {:ok, _} ->
+        conn
+        |> put_status(:ok)
+        |> json(%{message: "App removed"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{message: "Failed to remove app", reason: reason})
+    end
+  end
+
+  operation(:check_node,
+    summary: "Check node for CVEs",
+    parameters: [
+      node: [
+        in: :query,
+        description: "Node name",
+        required: true,
+        type: :string,
+        example: "node1@192.168.1.10"
+      ]
+    ]
+  )
+
+  def check_node(conn, params) do
+    node = Map.get(params, "node")
+
+    case Master.check_node_async(node) do
+      {:ok, _} ->
+        conn
+        |> put_status(:ok)
+        |> json(%{message: "Node checking started"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{message: "Failed to check node", reason: reason})
+    end
+  end
 end

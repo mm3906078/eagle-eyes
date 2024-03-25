@@ -22,7 +22,7 @@ defmodule Vcentral.Master do
   end
 
   def check_node(node) do
-    GenServer.call(__MODULE__, {:check_node, node}, 10_000)
+    GenServer.call(__MODULE__, {:check_node, node}, 50_000)
   end
 
   def check_node_async(node) do
@@ -31,6 +31,18 @@ defmodule Vcentral.Master do
 
   def update_app(app, version, node) do
     GenServer.call({Vagent.VersionControl, node}, {:update_app, app, version})
+  end
+
+  def install_app(app, version, node) do
+    GenServer.call({Vagent.VersionControl, node}, {:install_app, app, version})
+  end
+
+  def update_all_apps(node) do
+    GenServer.call({Vagent.VersionControl, node}, :update_all_apps)
+  end
+
+  def remove_app(app, node) do
+    GenServer.call({Vagent.VersionControl, node}, {:remove_app, app})
   end
 
   # Server
@@ -148,44 +160,56 @@ defmodule Vcentral.Master do
   defp check_node_func(node, state, status) do
     apps = Map.get(state[:nodes], node, %{})
 
-    {updated_apps, cves_node} =
-      Enum.reduce(apps, {%{}, %{}}, fn {app_name, app_info}, {acc_apps, acc_cves} ->
-        Logger.debug("Checking app: #{app_name} with version: #{app_info[:version]}")
+    if state[:cves][node] != %{} do
+      {:ok, apps, state[:cves][node]}
+    else
+      {updated_apps, cves_node} =
+        Enum.reduce(apps, {%{}, %{}}, fn {app_name, app_info}, {acc_apps, acc_cves} ->
+          Logger.debug("Checking app: #{app_name} with version: #{app_info[:version]}")
 
-        case update_app_info(app_name, app_info) do
-          {updated_app_info, cves_app} ->
-            {Map.put(acc_apps, app_name, updated_app_info), Map.put(acc_cves, app_name, cves_app)}
+          case update_app_info(app_name, app_info) do
+            {updated_app_info, cves_app} ->
+              {Map.put(acc_apps, app_name, updated_app_info),
+               Map.put(acc_cves, app_name, cves_app)}
 
-          updated_app_info ->
-            {Map.put(acc_apps, app_name, updated_app_info), acc_cves}
+            updated_app_info ->
+              {Map.put(acc_apps, app_name, updated_app_info), acc_cves}
+          end
+        end)
+
+      if status == "async" do
+        {:ok, message} = Vcentral.Notifier.create_message(node, cves_node)
+
+        case Vcentral.Notifier.send_message_telegram(message) do
+          {:ok, _} ->
+            Logger.info("Message sent to telegram")
+
+          {:error, reason} ->
+            Logger.error("Failed to send message to telegram: #{inspect(reason)}")
         end
-      end)
-
-    if status == "async" do
-      {:ok, message} = Vcentral.Notifier.create_message(node, cves_node)
-
-      case Vcentral.Notifier.send_message_telegram(message) do
-        {:ok, _} -> Logger.info("Message sent to telegram")
-        {:error, reason} -> Logger.error("Failed to send message to telegram: #{inspect(reason)}")
       end
+
+      Logger.debug(
+        "Node: #{node} updated apps: #{inspect(updated_apps)} with CVEs: #{inspect(cves_node)}"
+      )
+
+      {:ok, updated_apps, cves_node}
     end
-
-    Logger.debug(
-      "Node: #{node} updated apps: #{inspect(updated_apps)} with CVEs: #{inspect(cves_node)}"
-    )
-
-    {:ok, updated_apps, cves_node}
   end
 
   defp update_app_info(app_name, app_info) do
-    case CVEManager.get_CPEs_local(app_name, app_info[:version]) do
-      {:ok, cpe_list} when is_list(cpe_list) and cpe_list != [] ->
+    case CVEManager.cpe_checker(app_name, app_info[:version]) do
+      {:ok, cpe_list} when is_list(cpe_list) and length(cpe_list) > 1 ->
+        Logger.warning("Multiple CPEs found for #{app_name}, so skipping")
+        app_info
+
+      {:ok, cpe_list} when is_list(cpe_list) and length(cpe_list) == 1 ->
         Enum.reduce(cpe_list, app_info, fn cpe, acc_info ->
           Logger.debug("Got CPE for #{app_name}: #{cpe}")
 
           case handle_cpe_and_cves(app_name, cpe, acc_info) do
             {:ok, cves_app, updated_app_info} ->
-              Logger.debug("acc_info: #{inspect(acc_info)}")
+              Logger.debug("Updated app_info: #{inspect(updated_app_info)}")
               {updated_app_info, cves_app}
 
             _ ->
