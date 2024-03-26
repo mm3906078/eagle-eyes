@@ -50,7 +50,7 @@ defmodule Vcentral.CVEManager do
   def get_CVEs(cpe_name) do
     user_agent = UserAgent.random()
 
-    case HTTPoison.get(@cve_url <> cpe_name, [{"User-Agent", user_agent}]) do
+    case HTTPoison.get(@cve_url <> cpe_name, [{"User-Agent", user_agent}], [timeout: 10_000]) do
       {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
         case Jason.decode(body) do
           {:ok, %{"vulnerabilities" => []}} ->
