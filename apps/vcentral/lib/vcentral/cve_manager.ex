@@ -1,7 +1,8 @@
 defmodule Vcentral.CVEManager do
   require Logger
 
-  @cve_url "https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName="
+  @cve_url_nvd "https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName="
+  @cve_url_vuln "https://vuln.sentnl.io/api/query"
   @cpe_url_local "https://nvd.nist.gov/feeds/json/cpematch/1.0/nvdcpematch-1.0.json.zip"
   @cpe_guesser_url "https://cpe-guesser.cve-search.org/search"
   @local_cache_path "/tmp/"
@@ -47,10 +48,47 @@ defmodule Vcentral.CVEManager do
     end
   end
 
-  def get_CVEs(cpe_name) do
+  def get_CVEs_vuln(cpe_name) do
     user_agent = UserAgent.random()
 
-    case HTTPoison.get(@cve_url <> cpe_name, [{"User-Agent", user_agent}], [timeout: 10_000]) do
+    case HTTPoison.post(
+           @cve_url_vuln,
+           "{\"retrieve\": \"cves\", \"dict_filter\": {\"vulnerable_configuration\": \"#{cpe_name}\"}}",
+           [{"User-Agent", user_agent}, {"Content-Type", "application/json"}]
+         ) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
+        case Jason.decode(body) do
+          {:ok, %{"data" => [], "total" => 0}} ->
+            {:error, :no_cve}
+
+          {:ok, %{"data" => cves, "total" => _total}} ->
+            cves_map =
+              Enum.reduce(cves, %{}, fn cve, acc ->
+                Map.put(acc, cve["id"], %{
+                  description: cve["summary"],
+                  baseScore: cve["cvss3"],
+                  lastVersion: "Not specified"
+                })
+              end)
+
+            {:ok, cves_map}
+
+          {:error, _} = error ->
+            {:error, error}
+        end
+
+      {:ok, %HTTPoison.Response{status_code: status_code}} ->
+        {:error, {:unexpected_status_code, status_code}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def get_CVEs_nvd(cpe_name) do
+    user_agent = UserAgent.random()
+
+    case HTTPoison.get(@cve_url_nvd <> cpe_name, [{"User-Agent", user_agent}], timeout: 20_000) do
       {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
         case Jason.decode(body) do
           {:ok, %{"vulnerabilities" => []}} ->

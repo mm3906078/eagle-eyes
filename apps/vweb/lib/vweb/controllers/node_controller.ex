@@ -178,6 +178,7 @@ defmodule Vweb.NodeController do
   def check_node(conn, params) do
     node = Map.get(params, "node")
     Master.check_node_async(node)
+
     conn
     |> put_status(:ok)
     |> json(%{message: "Node started checking for CVEs"})

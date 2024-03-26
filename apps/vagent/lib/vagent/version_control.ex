@@ -3,7 +3,7 @@ defmodule Vagent.VersionControl do
 
   require Logger
 
-  #TODO: We need to rewrite this using gen_statem so install and update can be done better
+  # TODO: We need to rewrite this using gen_statem so install and update can be done better
 
   # Client
   def start_link(opts) do

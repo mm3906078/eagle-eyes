@@ -69,35 +69,44 @@ defmodule Vcentral.Master do
 
   @impl true
   def handle_cast({:check_node_async, node}, state) do
-    Task.start(fn -> check_node_func(node, state, "async") end)
+    caller = self()
+
+    Task.start(fn ->
+      {:ok, updated_apps, cves} = check_node_func(node, state, "async")
+      send(caller, {:check_node_async_result, node, updated_apps, cves})
+    end)
+
     {:noreply, state}
   end
 
   @impl true
-  def handle_call(:get_state, _from, state) do
-    {:reply, state, state}
+  def handle_info({:nodedown, node}, state) do
+    Logger.info("Node down: #{inspect(node)}")
+    new_state_app = Map.update(state, :nodes, 0, fn nodes -> Map.delete(nodes, node) end)
+    new_state = Map.update(new_state_app, :cves, 0, fn cves -> Map.delete(cves, node) end)
+    {:noreply, new_state}
   end
 
   @impl true
-  def handle_call({:check_node, node}, _from, state) do
-    {:ok, updated_apps, cves} = check_node_func(node, state, "sync")
+  def handle_info({:nodeup, node}, state) do
+    Logger.info("Node up: #{inspect(node)}")
 
-    new_state_app =
-      Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node, updated_apps) end)
+    node_string = Atom.to_string(node)
 
-    new_state =
-      Map.update(new_state_app, :cves, %{}, fn cves_map -> Map.put(cves_map, node, cves) end)
+    case GenServer.call({Vagent.VersionControl, node}, :get_version) do
+      {:ok, apps} ->
+        new_state_app =
+          Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node_string, apps) end)
 
-    {:reply, new_state, new_state}
-  end
+        new_state_app_cve =
+          Map.update(new_state_app, :cves, %{}, fn cves -> Map.put(cves, node_string, %{}) end)
 
-  @impl true
-  def handle_continue(:initialize, state) do
-    :net_kernel.monitor_nodes(true)
-    nodes = Node.list()
-    Logger.info("Master initialized with nodes: #{inspect(nodes)}")
-    Process.send_after(self(), :monitor, @update_interval)
-    {:noreply, state}
+        {:noreply, new_state_app_cve}
+
+      {:error, _} ->
+        Logger.error("Failed to get version from node: #{inspect(node)}")
+        {:noreply, state}
+    end
   end
 
   @impl true
@@ -128,33 +137,41 @@ defmodule Vcentral.Master do
   end
 
   @impl true
-  def handle_info({:nodeup, node}, state) do
-    Logger.info("Node up: #{inspect(node)}")
+  def handle_info({:check_node_async_result, node, updated_apps, cves}, state) do
+    new_state_app =
+      Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node, updated_apps) end)
 
-    node_string = Atom.to_string(node)
+    new_state =
+      Map.update(new_state_app, :cves, %{}, fn cves_map -> Map.put(cves_map, node, cves) end)
 
-    case GenServer.call({Vagent.VersionControl, node}, :get_version) do
-      {:ok, apps} ->
-        new_state_app =
-          Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node_string, apps) end)
-
-        new_state_app_cve =
-          Map.update(new_state_app, :cves, %{}, fn cves -> Map.put(cves, node_string, %{}) end)
-
-        {:noreply, new_state_app_cve}
-
-      {:error, _} ->
-        Logger.error("Failed to get version from node: #{inspect(node)}")
-        {:noreply, state}
-    end
+    {:noreply, new_state}
   end
 
   @impl true
-  def handle_info({:nodedown, node}, state) do
-    Logger.info("Node down: #{inspect(node)}")
-    new_state_app = Map.update(state, :nodes, 0, fn nodes -> Map.delete(nodes, node) end)
-    new_state = Map.update(new_state_app, :cves, 0, fn cves -> Map.delete(cves, node) end)
-    {:noreply, new_state}
+  def handle_call(:get_state, _from, state) do
+    {:reply, state, state}
+  end
+
+  @impl true
+  def handle_call({:check_node, node}, _from, state) do
+    {:ok, updated_apps, cves} = check_node_func(node, state, "sync")
+
+    new_state_app =
+      Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node, updated_apps) end)
+
+    new_state =
+      Map.update(new_state_app, :cves, %{}, fn cves_map -> Map.put(cves_map, node, cves) end)
+
+    {:reply, new_state, new_state}
+  end
+
+  @impl true
+  def handle_continue(:initialize, state) do
+    :net_kernel.monitor_nodes(true)
+    nodes = Node.list()
+    Logger.info("Master initialized with nodes: #{inspect(nodes)}")
+    Process.send_after(self(), :monitor, @update_interval)
+    {:noreply, state}
   end
 
   defp check_node_func(node, state, status) do
@@ -177,7 +194,7 @@ defmodule Vcentral.Master do
           end
         end)
 
-      if status == "async" do
+      if status == "async" and cves_node != %{} do
         {:ok, message} = Vcentral.Notifier.create_message(node, cves_node)
 
         case Vcentral.Notifier.send_message_telegram(message) do
@@ -188,10 +205,6 @@ defmodule Vcentral.Master do
             Logger.error("Failed to send message to telegram: #{inspect(reason)}")
         end
       end
-
-      Logger.debug(
-        "Node: #{node} updated apps: #{inspect(updated_apps)} with CVEs: #{inspect(cves_node)}"
-      )
 
       {:ok, updated_apps, cves_node}
     end
@@ -232,15 +245,30 @@ defmodule Vcentral.Master do
   end
 
   defp handle_cpe_and_cves(app_name, cpe, app_info) do
-    case CVEManager.get_CVEs(cpe) do
+    case CVEManager.get_CVEs_nvd(cpe) do
       {:ok, res} ->
-        Logger.debug("Got CVEs for #{app_name} with CPE #{cpe}: #{inspect(res)}")
+        Logger.debug("Got CVEs for #{app_name} with CPE #{cpe}: #{inspect(res)} with NVD")
         updated_app_info = Map.put(app_info, :cpe, cpe)
         {:ok, res, updated_app_info}
 
       {:error, reason} ->
-        Logger.debug("Failed to get CVEs for #{app_name} with CPE #{cpe}: #{inspect(reason)}")
-        Map.put(app_info, :cpe, cpe)
+        Logger.debug(
+          "Failed to get CVEs for #{app_name} with CPE #{cpe}: #{inspect(reason)} from NVD"
+        )
+
+        case CVEManager.get_CVEs_vuln(cpe) do
+          {:ok, res} ->
+            Logger.debug("Got CVEs for #{app_name} with CPE #{cpe}: #{inspect(res)} with VulnDB")
+            updated_app_info = Map.put(app_info, :cpe, cpe)
+            {:ok, res, updated_app_info}
+
+          {:error, reason} ->
+            Logger.debug(
+              "Failed to get CVEs for #{app_name} with CPE #{cpe}: #{inspect(reason)} from VulnDB"
+            )
+
+            Map.put(app_info, :cpe, cpe)
+        end
     end
   end
 end
