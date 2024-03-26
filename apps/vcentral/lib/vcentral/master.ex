@@ -4,8 +4,8 @@ defmodule Vcentral.Master do
 
   require Logger
 
-  # 10 minutes
-  @update_interval 10 * 60 * 1000
+  # 1 Day
+  @update_interval 86_400_000
 
   # Client
   def start_link(opts) do
@@ -68,9 +68,9 @@ defmodule Vcentral.Master do
   end
 
   @impl true
-  def handle_call({:check_node_async, node}, _from, state) do
+  def handle_cast({:check_node_async, node}, state) do
     Task.start(fn -> check_node_func(node, state, "async") end)
-    {:reply, :ok, state}
+    {:noreply, state}
   end
 
   @impl true

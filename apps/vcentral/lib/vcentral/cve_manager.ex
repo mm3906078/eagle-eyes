@@ -1,108 +1,10 @@
 defmodule Vcentral.CVEManager do
   require Logger
 
-  @cpe_url "https://services.nvd.nist.gov/rest/json/cpes/2.0?keywordSearch="
   @cve_url "https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName="
   @cpe_url_local "https://nvd.nist.gov/feeds/json/cpematch/1.0/nvdcpematch-1.0.json.zip"
   @cpe_guesser_url "https://cpe-guesser.cve-search.org/search"
   @local_cache_path "/tmp/"
-
-  def check_vulnerabilities(app, version) do
-    case get_CPEs(app, version) do
-      {:ok, cpes} ->
-        cpes
-        |> Enum.reduce(%{}, fn cpe, acc ->
-          case get_CVEs(cpe) do
-            {:ok, cves} ->
-              Map.put(acc, cpe, cves)
-
-            {:error, error} ->
-              Logger.error("Failed to get CVEs for CPE: #{cpe}, error: #{inspect(error)}")
-              acc
-          end
-        end)
-        |> (fn res -> {:ok, res} end).()
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp get_CPEs(app, version) do
-    user_agent = UserAgent.random()
-
-    case HTTPoison.get(@cpe_url <> app, [{"User-Agent", user_agent}]) do
-      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
-        case Jason.decode(body) do
-          {:ok, %{"products" => []}} ->
-            {:error, :no_cpe}
-
-          {:ok, %{"products" => products}} ->
-            products
-            |> Enum.reduce([], fn product, acc ->
-              case Enum.find(product["cpe"]["titles"], fn title ->
-                     String.contains?(title["title"], version)
-                   end) do
-                nil -> acc
-                _title -> [product["cpe"]["cpeName"] | acc]
-              end
-            end)
-            |> case do
-              [] -> {:error, :no_matching_version}
-              cpes -> {:ok, cpes}
-            end
-
-          {:error, _} = error ->
-            error
-        end
-
-      {:ok, %HTTPoison.Response{status_code: status_code}} ->
-        {:error, {:unexpected_status_code, status_code}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  def get_CPEs_local(app, version) do
-    case download_CPEs() do
-      :ok ->
-        case File.read(Path.join(@local_cache_path, "nvdcpematch-1.0.json")) do
-          {:ok, body} ->
-            case Jason.decode(body) do
-              {:ok, %{"matches" => matches}} ->
-                matches
-                |> Enum.reduce([], fn match, acc ->
-                  acc ++ filter_matches(match, app, version)
-                end)
-                |> Enum.uniq_by(& &1)
-                |> case do
-                  [] -> {:error, :no_cpe}
-                  unique_cpes -> {:ok, unique_cpes}
-                end
-
-              {:error, _} = error ->
-                {:error, error}
-            end
-
-          {:error, _} = error ->
-            {:error, error}
-        end
-
-      :error ->
-        :error
-    end
-  end
-
-  defp filter_matches(%{"cpe23Uri" => cpe23Uri, "cpe_name" => cpe_names}, app, version) do
-    if String.contains?(cpe23Uri, app) do
-      for %{"cpe23Uri" => cpe_name_uri} <- cpe_names,
-          String.contains?(cpe_name_uri, version),
-          do: cpe_name_uri
-    else
-      []
-    end
-  end
 
   defp download_CPEs() do
     path = Path.join(@local_cache_path, "nvdcpematch-1.0.json")
@@ -246,7 +148,7 @@ defmodule Vcentral.CVEManager do
     end
   end
 
-  def cpe_guesser(app) do
+  defp cpe_guesser(app) do
     user_agent = UserAgent.random()
 
     case HTTPoison.post(@cpe_guesser_url, "{\"query\": [\"#{app}\"]}", [

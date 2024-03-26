@@ -177,17 +177,9 @@ defmodule Vweb.NodeController do
 
   def check_node(conn, params) do
     node = Map.get(params, "node")
-
-    case Master.check_node_async(node) do
-      {:ok, _} ->
-        conn
-        |> put_status(:ok)
-        |> json(%{message: "Node checking started"})
-
-      {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{message: "Failed to check node", reason: reason})
-    end
+    Master.check_node_async(node)
+    conn
+    |> put_status(:ok)
+    |> json(%{message: "Node started checking for CVEs"})
   end
 end
