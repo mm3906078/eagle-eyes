@@ -19,7 +19,7 @@ Eagle Eyes is a vulnerability scanner that scans the servers agents set up on th
 
 ### Installation
 
-I suggest installing Elixir using `asdf`` version manager. please follow the instructions [here](https://medium.com/@prathmeshchavan8652/installing-elixir-and-erlang-using-asdf-in-ubuntu-df1aac56b7a7). then use make to install the dependencies and compile the project.
+I suggest installing Elixir using `asdf` version manager. please follow the instructions [here](https://medium.com/@prathmeshchavan8652/installing-elixir-and-erlang-using-asdf-in-ubuntu-df1aac56b7a7). then use make to install the dependencies and compile the project.
 
 ```bash
 git clone git@github.com:mm3906078/eagle-eyes.git
