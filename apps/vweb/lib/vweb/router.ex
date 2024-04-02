@@ -20,7 +20,6 @@ defmodule Vweb.Router do
 
     get("/nodes/list", NodeController, :list)
     get("/master_state", NodeController, :state)
-    post("/update_app_version", NodeController, :update_app_version)
     post("/install_app", NodeController, :install_app)
     post("/remove_app", NodeController, :remove_app)
     post("/check_cve", NodeController, :check_node)

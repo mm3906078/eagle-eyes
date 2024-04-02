@@ -1,6 +1,7 @@
 defmodule Vcentral.Master do
   use GenServer
   alias Vcentral.CVEManager
+  alias Vagent.VersionControl
 
   require Logger
 
@@ -30,19 +31,37 @@ defmodule Vcentral.Master do
   end
 
   def update_app(app, version, node) do
-    GenServer.call({Vagent.VersionControl, node}, {:update_app, app, version})
+    case get_agent_pid(node) do
+      {:ok, pid} ->
+        VersionControl.install_app(pid, app, version)
+
+      {:error, _} ->
+        Logger.error("Failed to get PID for node: #{inspect(node)}")
+    end
   end
 
   def install_app(app, version, node) do
-    GenServer.call({Vagent.VersionControl, node}, {:install_app, app, version})
+    case get_agent_pid(node) do
+      {:ok, pid} ->
+        VersionControl.install_app(pid, app, version)
+
+      {:error, _} ->
+        Logger.error("Failed to get PID for node: #{inspect(node)}")
+    end
   end
 
-  def update_all_apps(node) do
-    GenServer.call({Vagent.VersionControl, node}, :update_all_apps)
-  end
+  # def update_all_apps(node) do
+  #   # TODO: Implement
+  # end
 
   def remove_app(app, node) do
-    GenServer.call({Vagent.VersionControl, node}, {:remove_app, app})
+    case get_agent_pid(node) do
+      {:ok, pid} ->
+        VersionControl.remove_app(pid, app)
+
+      {:error, _} ->
+        Logger.error("Failed to get PID for node: #{inspect(node)}")
+    end
   end
 
   # Server
@@ -93,19 +112,39 @@ defmodule Vcentral.Master do
 
     node_string = Atom.to_string(node)
 
-    case GenServer.call({Vagent.VersionControl, node}, :get_version) do
-      {:ok, apps} ->
-        new_state_app =
-          Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node_string, apps) end)
+    :timer.sleep(1000)
 
-        new_state_app_cve =
-          Map.update(new_state_app, :cves, %{}, fn cves -> Map.put(cves, node_string, %{}) end)
-
-        {:noreply, new_state_app_cve}
-
+    case get_agent_pid(node) do
       {:error, _} ->
-        Logger.error("Failed to get version from node: #{inspect(node)}")
+        Logger.error("Failed to get PID for node: #{inspect(node)}")
         {:noreply, state}
+
+      {:ok, pid} ->
+        case Vagent.VersionControl.get_version(pid) do
+          :ok ->
+            Logger.debug("Got PID: #{inspect(pid)}")
+
+            case VersionControl.get_apps_installed(pid) do
+              {:ok, apps} ->
+                new_state_app =
+                  Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node_string, apps) end)
+
+                new_state_app_cve =
+                  Map.update(new_state_app, :cves, %{}, fn cves ->
+                    Map.put(cves, node_string, %{})
+                  end)
+
+                {:noreply, new_state_app_cve}
+
+              {:error, _} ->
+                Logger.error("Failed to get version from node: #{inspect(node)}")
+                {:noreply, state}
+            end
+
+          _ ->
+            Logger.error("Failed to get version from node: #{inspect(node)}")
+            {:noreply, state}
+        end
     end
   end
 
@@ -119,16 +158,25 @@ defmodule Vcentral.Master do
 
         node_string = Atom.to_string(node)
 
-        case GenServer.call({Vagent.VersionControl, node}, :get_version) do
-          {:ok, version} ->
-            Map.update(acc_state, :nodes, 0, fn nodes -> Map.put(nodes, node_string, version) end)
-
-          # this line commented out to make debugging easier
-          # Map.update(acc_state, :cves, 0, fn cves -> Map.put(cves, node_string, %{}) end)
-
+        case get_agent_pid(node) do
           {:error, _} ->
-            Logger.error("Failed to get version from node: #{inspect(node)}")
-            acc_state
+            Logger.error("Failed to get PID for node: #{inspect(node)}")
+            {:noreply, state}
+
+          {:ok, pid} ->
+            case VersionControl.get_apps_installed(pid) do
+              {:ok, version} ->
+                Map.update(acc_state, :nodes, 0, fn nodes ->
+                  Map.put(nodes, node_string, version)
+                end)
+
+              # this line commented out to make debugging easier
+              # Map.update(acc_state, :cves, 0, fn cves -> Map.put(cves, node_string, %{}) end)
+
+              {:error, _} ->
+                Logger.error("Failed to get version from node: #{inspect(node)}")
+                acc_state
+            end
         end
       end)
 
@@ -207,6 +255,16 @@ defmodule Vcentral.Master do
       end
 
       {:ok, updated_apps, cves_node}
+    end
+  end
+
+  defp get_agent_pid(node) do
+    case :pg.get_members(node) do
+      [] ->
+        {:error, :not_found}
+
+      [pid | _] ->
+        {:ok, pid}
     end
   end
 

@@ -42,6 +42,8 @@ the agent and master releases will be in `_build/prod/agent-<VERSION>.tar.gz` an
 - [ ] Support for MacOS agents.
 - [ ] Support for Linux older than Ubuntu 22.04/Debian 12.
 - [ ] Rewrite the `version_control.ex` module for installing large packages.
+- [ ] Unit tests for the `vagent` application.
+- [ ] Unit tests for the `vcentral` application.
 
 ## Development
 
@@ -49,8 +51,8 @@ Run the debugging shell using these commands.
 
 ```bash
 export $(xargs < .env)
-iex --name vcentral@192.168.1.10 -S mix run --no-start scripts/start-agent.exs
-iex --name vagent@192.168.1.10 -S mix run --no-start scripts/start-master.exs
+iex --name vagent@192.168.1.10 -S mix run --no-start scripts/start-agent.exs
+iex --name vcentral@192.168.1.10 -S mix run --no-start scripts/start-master.exs
 ```
 
 if you getting an error of Protocol `'inet_tcp': register/listen error: econnrefused` try to run `epmd -daemon` and then run the above commands.
