@@ -23,6 +23,7 @@ defmodule Vweb.Router do
     post("/install_app", NodeController, :install_app)
     post("/remove_app", NodeController, :remove_app)
     post("/check_cve", NodeController, :check_node)
+    post("/search_app", NodeController, :search_app)
   end
 
   scope "/api" do

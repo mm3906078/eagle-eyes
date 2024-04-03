@@ -138,4 +138,41 @@ defmodule Vweb.NodeController do
     |> put_status(:ok)
     |> json(%{message: "Node started checking for CVEs"})
   end
+
+  operation(:search_app,
+    summary: "Search app",
+    parameters: [
+      node: [
+        in: :query,
+        description: "Node name",
+        required: true,
+        type: :string,
+        example: "node1@192.168.1.10"
+      ],
+      "apps[]": [
+        in: :query,
+        description: "App name",
+        required: false,
+        type: :array,
+        example: ["vagent", "vweb"]
+      ]
+    ]
+  )
+
+  def search_app(conn, params) do
+    node = String.to_atom(Map.get(params, "node"))
+    apps = Map.get(params, "apps", [])
+
+    case Master.search_app(apps, node) do
+      {:ok, result} ->
+        conn
+        |> put_status(:ok)
+        |> json(%{message: "Apps found", result: result})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{message: "Failed to search app", reason: reason})
+    end
+  end
 end

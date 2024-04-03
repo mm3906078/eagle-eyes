@@ -54,6 +54,10 @@ defmodule Vcentral.Master do
   #   # TODO: Implement
   # end
 
+  def search_app(apps, node) do
+    GenServer.call(__MODULE__, {:search_app, apps, node})
+  end
+
   def remove_app(app, node) do
     case get_agent_pid(node) do
       {:ok, pid} ->
@@ -99,6 +103,42 @@ defmodule Vcentral.Master do
   end
 
   @impl true
+  def handle_call({:check_node, node}, _from, state) do
+    {:ok, updated_apps, cves} = check_node_func(node, state, "sync")
+
+    new_state_app =
+      Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node, updated_apps) end)
+
+    new_state =
+      Map.update(new_state_app, :cves, %{}, fn cves_map -> Map.put(cves_map, node, cves) end)
+
+    {:reply, new_state, new_state}
+  end
+
+  @impl true
+  def handle_call(:get_state, _from, state) do
+    {:reply, state, state}
+  end
+
+  def handle_call({:search_app, apps, node}, _from, state) do
+    node_str = to_string(node)
+
+    case fetch_installed_apps_for_node(node) do
+      {:ok, apps_installed} ->
+        apps_response = get_apps_response(apps, apps_installed, state, node_str)
+        {:reply, apps_response, state}
+
+      {:error, :version_check_failed} ->
+        Logger.error("Failed to update version for node: #{inspect(node_str)}")
+        {:reply, :error, state}
+
+      {:error, :pid_not_found} ->
+        Logger.error("Failed to get PID for node: #{inspect(node_str)}")
+        {:reply, :error, state}
+    end
+  end
+
+  @impl true
   def handle_info({:nodedown, node}, state) do
     Logger.info("Node down: #{inspect(node)}")
     new_state_app = Map.update(state, :nodes, 0, fn nodes -> Map.delete(nodes, node) end)
@@ -112,39 +152,24 @@ defmodule Vcentral.Master do
 
     node_string = Atom.to_string(node)
 
+    # TODO: THIS IS LIKE SHIT!
     :timer.sleep(1000)
 
-    case get_agent_pid(node) do
+    case fetch_installed_apps_for_node(node) do
+      {:ok, apps} ->
+        new_state_app =
+          Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node_string, apps) end)
+
+        new_state_app_cve =
+          Map.update(new_state_app, :cves, %{}, fn cves ->
+            Map.put(cves, node_string, %{})
+          end)
+
+        {:noreply, new_state_app_cve}
+
       {:error, _} ->
-        Logger.error("Failed to get PID for node: #{inspect(node)}")
+        Logger.error("Failed to get version from node: #{inspect(node)}")
         {:noreply, state}
-
-      {:ok, pid} ->
-        case Vagent.VersionControl.get_version(pid) do
-          :ok ->
-            Logger.debug("Got PID: #{inspect(pid)}")
-
-            case VersionControl.get_apps_installed(pid) do
-              {:ok, apps} ->
-                new_state_app =
-                  Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node_string, apps) end)
-
-                new_state_app_cve =
-                  Map.update(new_state_app, :cves, %{}, fn cves ->
-                    Map.put(cves, node_string, %{})
-                  end)
-
-                {:noreply, new_state_app_cve}
-
-              {:error, _} ->
-                Logger.error("Failed to get version from node: #{inspect(node)}")
-                {:noreply, state}
-            end
-
-          _ ->
-            Logger.error("Failed to get version from node: #{inspect(node)}")
-            {:noreply, state}
-        end
     end
   end
 
@@ -158,25 +183,18 @@ defmodule Vcentral.Master do
 
         node_string = Atom.to_string(node)
 
-        case get_agent_pid(node) do
+        case fetch_installed_apps_for_node(node) do
+          {:ok, version} ->
+            Map.update(acc_state, :nodes, 0, fn nodes ->
+              Map.put(nodes, node_string, version)
+            end)
+
+          # this line commented out to make debugging easier
+          # Map.update(acc_state, :cves, 0, fn cves -> Map.put(cves, node_string, %{}) end)
+
           {:error, _} ->
-            Logger.error("Failed to get PID for node: #{inspect(node)}")
-            {:noreply, state}
-
-          {:ok, pid} ->
-            case VersionControl.get_apps_installed(pid) do
-              {:ok, version} ->
-                Map.update(acc_state, :nodes, 0, fn nodes ->
-                  Map.put(nodes, node_string, version)
-                end)
-
-              # this line commented out to make debugging easier
-              # Map.update(acc_state, :cves, 0, fn cves -> Map.put(cves, node_string, %{}) end)
-
-              {:error, _} ->
-                Logger.error("Failed to get version from node: #{inspect(node)}")
-                acc_state
-            end
+            Logger.error("Failed to get version from node: #{inspect(node)}")
+            acc_state
         end
       end)
 
@@ -193,24 +211,6 @@ defmodule Vcentral.Master do
       Map.update(new_state_app, :cves, %{}, fn cves_map -> Map.put(cves_map, node, cves) end)
 
     {:noreply, new_state}
-  end
-
-  @impl true
-  def handle_call(:get_state, _from, state) do
-    {:reply, state, state}
-  end
-
-  @impl true
-  def handle_call({:check_node, node}, _from, state) do
-    {:ok, updated_apps, cves} = check_node_func(node, state, "sync")
-
-    new_state_app =
-      Map.update(state, :nodes, %{}, fn nodes -> Map.put(nodes, node, updated_apps) end)
-
-    new_state =
-      Map.update(new_state_app, :cves, %{}, fn cves_map -> Map.put(cves_map, node, cves) end)
-
-    {:reply, new_state, new_state}
   end
 
   @impl true
@@ -328,5 +328,57 @@ defmodule Vcentral.Master do
             Map.put(app_info, :cpe, cpe)
         end
     end
+  end
+
+  defp get_apps_response(apps, apps_installed, state, node_str) do
+    # Assuming apps is a list of app names you want to search for.
+    if Enum.empty?(apps) do
+      {:ok, apps_installed}
+    else
+      apps_cves = Map.get(state.cves, node_str, %{})
+
+      apps_found_details =
+        Enum.reduce(apps, %{}, fn app, acc ->
+          case Map.fetch(apps_installed, app) do
+            :error ->
+              acc
+
+            {:ok, app_details} ->
+              cves_for_app = Map.get(apps_cves, app, %{})
+
+              Map.put(acc, app, %{
+                details: app_details,
+                cves: cves_for_app
+              })
+          end
+        end)
+
+      if Map.keys(apps_found_details) == [] do
+        {:error, :apps_not_found}
+      else
+        {:ok, apps_found_details}
+      end
+    end
+  end
+
+  defp fetch_installed_apps_for_node(node) do
+    case get_agent_pid(node) do
+      {:ok, pid} ->
+        case VersionControl.get_version(pid) do
+          :ok ->
+            VersionControl.get_apps_installed(pid)
+
+          _ ->
+            {:error, :version_check_failed}
+        end
+
+      {:error, _} ->
+        {:error, :pid_not_found}
+    end
+  end
+
+  defp update_node_apps(state, node_str, apps_installed) do
+    new_nodes = Map.put(state.nodes, node_str, apps_installed)
+    Map.put(state, :nodes, new_nodes)
   end
 end
