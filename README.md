@@ -41,7 +41,7 @@ the agent and master releases will be in `_build/prod/agent-<VERSION>.tar.gz` an
 - [ ] Support for Windows agents.
 - [ ] Support for MacOS agents.
 - [ ] Support for Linux older than Ubuntu 22.04/Debian 12.
-- [ ] Rewrite the `version_control.ex` module for installing large packages.
+- [x] Rewrite the `version_control.ex` module for installing large packages.
 - [ ] Unit tests for the `vagent` application.
 - [ ] Unit tests for the `vcentral` application.
 

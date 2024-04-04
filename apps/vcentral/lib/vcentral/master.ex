@@ -1,7 +1,6 @@
 defmodule Vcentral.Master do
   use GenServer
   alias Vcentral.CVEManager
-  alias Vagent.VersionControl
 
   require Logger
 
@@ -30,29 +29,25 @@ defmodule Vcentral.Master do
     GenServer.cast(__MODULE__, {:check_node_async, node})
   end
 
-  def update_app(app, version, node) do
-    case get_agent_pid(node) do
-      {:ok, pid} ->
-        VersionControl.install_app(pid, app, version)
-
-      {:error, _} ->
-        Logger.error("Failed to get PID for node: #{inspect(node)}")
-    end
-  end
-
   def install_app(app, version, node) do
     case get_agent_pid(node) do
       {:ok, pid} ->
-        VersionControl.install_app(pid, app, version)
+        GenServer.call(pid, {:install_app, app, version})
 
       {:error, _} ->
         Logger.error("Failed to get PID for node: #{inspect(node)}")
     end
   end
 
-  # def update_all_apps(node) do
-  #   # TODO: Implement
-  # end
+  def update_apps(apps, node) do
+    case get_agent_pid(node) do
+      {:ok, pid} ->
+        GenServer.call(pid, {:update, apps})
+
+      {:error, _} ->
+        Logger.error("Failed to get PID for node: #{inspect(node)}")
+    end
+  end
 
   def search_app(apps, node) do
     GenServer.call(__MODULE__, {:search_app, apps, node})
@@ -61,7 +56,7 @@ defmodule Vcentral.Master do
   def remove_app(app, node) do
     case get_agent_pid(node) do
       {:ok, pid} ->
-        VersionControl.remove_app(pid, app)
+        GenServer.call(pid, {:remove_app, app})
 
       {:error, _} ->
         Logger.error("Failed to get PID for node: #{inspect(node)}")
@@ -331,7 +326,6 @@ defmodule Vcentral.Master do
   end
 
   defp get_apps_response(apps, apps_installed, state, node_str) do
-    # Assuming apps is a list of app names you want to search for.
     if Enum.empty?(apps) do
       {:ok, apps_installed}
     else
@@ -364,9 +358,9 @@ defmodule Vcentral.Master do
   defp fetch_installed_apps_for_node(node) do
     case get_agent_pid(node) do
       {:ok, pid} ->
-        case VersionControl.get_version(pid) do
+        case GenServer.call(pid, :get_version) do
           :ok ->
-            VersionControl.get_apps_installed(pid)
+            GenServer.call(pid, :get_apps)
 
           _ ->
             {:error, :version_check_failed}
@@ -375,10 +369,5 @@ defmodule Vcentral.Master do
       {:error, _} ->
         {:error, :pid_not_found}
     end
-  end
-
-  defp update_node_apps(state, node_str, apps_installed) do
-    new_nodes = Map.put(state.nodes, node_str, apps_installed)
-    Map.put(state, :nodes, new_nodes)
   end
 end

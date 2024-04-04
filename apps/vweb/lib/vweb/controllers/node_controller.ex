@@ -175,4 +175,41 @@ defmodule Vweb.NodeController do
         |> json(%{message: "Failed to search app", reason: reason})
     end
   end
+
+  operation(:update_apps,
+    summary: "Update apps",
+    parameters: [
+      node: [
+        in: :query,
+        description: "Node name",
+        required: true,
+        type: :string,
+        example: "node1@192.168.1.10"
+      ],
+      "apps[]": [
+        in: :query,
+        description: "App name",
+        required: false,
+        type: :array,
+        example: ["vagent", "vweb"]
+      ]
+    ]
+  )
+
+  def update_apps(conn, params) do
+    node = String.to_atom(Map.get(params, "node"))
+    apps = Map.get(params, "apps", [])
+
+    case Master.update_apps(apps, node) do
+      :ok ->
+        conn
+        |> put_status(:ok)
+        |> json(%{message: "Apps going to be updated"})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{message: "Failed to update apps", reason: reason})
+    end
+  end
 end

@@ -29,6 +29,10 @@ defmodule Vagent.VersionControl do
     :gen_statem.call(pid, {:remove_app, app})
   end
 
+  def update_apps(pid, apps) do
+    :gen_statem.call(pid, {:update, apps})
+  end
+
   # Callbacks
 
   def callback_mode() do
@@ -114,6 +118,7 @@ defmodule Vagent.VersionControl do
         %{state: :get_version},
         _data
       ) do
+    Logger.debug("Postponing get_apps call")
     {:keep_state_and_data, :postpone}
   end
 
@@ -151,6 +156,12 @@ defmodule Vagent.VersionControl do
 
   def handle_event({:call, from}, :get_apps, %{state: :idle} = state, _data) do
     {:keep_state_and_data, [{:reply, from, {:ok, state.apps}}]}
+  end
+
+  def handle_event({:call, from}, {:update, apps}, %{state: :idle} = state, data) do
+    next_state = %{state | state: :update}
+    next_event = {:next_event, :internal, {:update, apps}}
+    {:next_state, next_state, data, [next_event, {:reply, from, :ok}]}
   end
 
   #################
@@ -212,15 +223,21 @@ defmodule Vagent.VersionControl do
     {:keep_state_and_data, {:reply, from, {:error, :busy}}}
   end
 
+  def handle_event({:call, from}, {:update, _app}, %{state: :installing_app}, _data) do
+    {:keep_state_and_data, {:reply, from, {:error, :busy}}}
+  end
+
   def handle_event({:call, from}, {:remove_app, _app}, %{state: :installing_app}, _data) do
     {:keep_state_and_data, {:reply, from, {:error, :busy}}}
   end
 
   def handle_event({:call, _from}, :get_version, %{state: :installing_app}, _data) do
+    Logger.debug("Postponing get_version call")
     {:keep_state_and_data, :postpone}
   end
 
   def handle_event({:call, _from}, :get_apps, %{state: :installing_app}, _data) do
+    Logger.debug("Postponing get_apps call")
     {:keep_state_and_data, :postpone}
   end
 
@@ -275,11 +292,17 @@ defmodule Vagent.VersionControl do
   end
 
   def handle_event({:call, _from}, :get_version, %{state: :removing_app}, _data) do
+    Logger.debug("Postponing get_version call")
     {:keep_state_and_data, :postpone}
   end
 
   def handle_event({:call, _from}, :get_apps, %{state: :removing_app}, _data) do
+    Logger.debug("Postponing get_apps call")
     {:keep_state_and_data, :postpone}
+  end
+
+  def handle_event({:call, from}, {:update, _app}, %{state: :removing_app}, _data) do
+    {:keep_state_and_data, {:reply, from, {:error, :busy}}}
   end
 
   def handle_event(
@@ -295,6 +318,83 @@ defmodule Vagent.VersionControl do
     {:keep_state_and_data, {:reply, from, {:error, :busy}}}
   end
 
+  ############
+  ## update ##
+  ############
+
+  def handle_event(:enter, _old_state, %{state: :update}, _data) do
+    Logger.info("Entered update state")
+    :keep_state_and_data
+  end
+
+  def handle_event(:internal, {:update, apps}, %{state: :update}, _data) do
+    Logger.info("Updating apps")
+    # check if apps are empty list
+    if apps == [] do
+      run_script("update_apps.sh", [])
+    else
+      run_script("update_apps.sh", apps)
+    end
+
+    :keep_state_and_data
+  end
+
+  def handle_event(
+        :info,
+        {port, {:data, "update_app_success"}},
+        %{state: :update} = state,
+        _data
+      )
+      when is_port(port) do
+    Logger.info("Apps updated successfully")
+    next_state = %{state | state: :get_version}
+    next_event = {:next_event, :internal, :get_version}
+    {:next_state, next_state, %{}, [next_event]}
+  end
+
+  def handle_event(
+        :info,
+        {port, {:data, "Failed_to_update"}},
+        %{state: :update},
+        _data
+      )
+      when is_port(port) do
+    Logger.error("Error updating apps")
+    next_state = %{state: :idle}
+    {:next_state, next_state, %{}, []}
+  end
+
+  def handle_event(:info, _msg, %{state: :update}, _data) do
+    :keep_state_and_data
+  end
+
+  def handle_event({:call, _from}, :get_version, %{state: :update}, _data) do
+    Logger.debug("Postponing get_version call")
+    {:keep_state_and_data, :postpone}
+  end
+
+  def handle_event({:call, _from}, :get_apps, %{state: :update}, _data) do
+    Logger.debug("Postponing get_apps call")
+    {:keep_state_and_data, :postpone}
+  end
+
+  def handle_event({:call, from}, {:update, _app}, %{state: :update}, _data) do
+    {:keep_state_and_data, {:reply, from, {:error, :busy}}}
+  end
+
+  def handle_event(
+        {:call, from},
+        {:install_app, _app, _version},
+        %{state: :update},
+        _data
+      ) do
+    {:keep_state_and_data, {:reply, from, {:error, :busy}}}
+  end
+
+  def handle_event({:call, from}, {:remove_app, _app}, %{state: :update}, _data) do
+    {:keep_state_and_data, {:reply, from, {:error, :busy}}}
+  end
+
   #############
   ## PRIVATE ##
   #############
@@ -302,7 +402,7 @@ defmodule Vagent.VersionControl do
   defp run_script(script, script_args) do
     app_dir = Application.app_dir(:vagent, "priv/scripts")
     script_path = Path.join([app_dir, script])
-    Logger.info("Running script: #{script_path}")
+    Logger.info("Running script: #{script_path} & args: #{inspect(script_args)}")
 
     _port =
       Port.open({:spawn_executable, script_path}, [:binary, args: script_args])
