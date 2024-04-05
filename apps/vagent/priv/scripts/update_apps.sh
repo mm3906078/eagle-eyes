@@ -10,7 +10,6 @@ function help() {
 }
 
 if [ $# -eq 0 ]; then
-    echo -ne "hi"
     sudo apt update
     sudo apt upgrade -y
     e=$?
@@ -31,3 +30,6 @@ for APP_NAME in "$@"; do
         exit 1
     fi
 done
+
+echo -ne "update_app_success"
+exit 0
