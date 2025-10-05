@@ -1,4 +1,4 @@
-.PHONY: compile compile_dev release_agent release_master tar_agent tar_master iex_dev all clean
+.PHONY: compile compile_dev release_agent release_master tar_agent tar_master iex_dev all clean release
 
 all: compile release_agent release_master tar_agent tar_master
 
@@ -18,6 +18,9 @@ release_master:
 	@echo "Creating release for master..."
 	MIX_ENV=prod mix release master
 
+release: release_agent release_master
+	@echo "All releases created successfully!"
+
 iex_dev_master:
 	@echo "Starting an interactive Elixir session in development environment..."
 	iex -S mix run --no-start scripts/start-master.exs
@@ -32,3 +35,16 @@ clean:
 	rm -rf _build
 	rm -rf deps
 	rm -rf .elixir_ls
+
+# Release management targets
+release_patch:
+	@./scripts/release.sh patch
+
+release_minor:
+	@./scripts/release.sh minor
+
+release_major:
+	@./scripts/release.sh major
+
+version:
+	@grep 'version:' mix.exs | head -1 | sed 's/.*version: "\(.*\)".*/\1/'
